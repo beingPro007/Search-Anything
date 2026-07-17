@@ -164,6 +164,8 @@ def train(
                 on_checkpoint()
 
     save_model(encoder, head, out_dir, config | {"step": steps})
+    if on_checkpoint:
+        on_checkpoint()  # persist the model before eval can fail
 
     from app.eval import evaluate
 

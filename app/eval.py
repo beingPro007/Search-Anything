@@ -11,7 +11,7 @@ from app.constants import esci as C
 from app.constants import splade as S
 from app.constants import train as T
 from app.databuilder import examples_path, p2q_path, products_path, queries_path
-from app.helpers.training import encode_texts
+from app.helpers.training import encode_texts, encode_texts_chunked
 
 log = get_logger(__name__)
 
@@ -109,6 +109,36 @@ def evaluate(
 
 
 @torch.no_grad()
+def evaluate_dense_base(
+    encoder,
+    tokenizer,
+    locale: str,
+    n_queries: int = T.EVAL_QUERIES_PER_LOCALE,
+    device: str = "cpu",
+    seed: int = C.SEED,
+) -> dict:
+    """Plain CLS-embedding cosine reranking: no GCN head, no neighbors."""
+    ndcgs, recalls = [], []
+    for query, _, labels, texts in eval_queries(locale, n_queries, seed):
+        x_q = encode_texts(encoder, tokenizer, [query], T.MAX_QUERY_TOKENS, device)
+        x_p = encode_texts_chunked(
+            encoder, tokenizer, texts, T.MAX_PRODUCT_TOKENS, device
+        )
+        scores = (F.normalize(x_q, dim=-1) @ F.normalize(x_p, dim=-1).T).squeeze(0)
+        n, r = _metrics_from_scores(scores, labels)
+        ndcgs.append(n)
+        recalls.append(r)
+
+    result = {
+        "queries": len(ndcgs),
+        "ndcg": round(sum(ndcgs) / max(len(ndcgs), 1), 4),
+        "recall@10": round(sum(recalls) / max(len(recalls), 1), 4),
+    }
+    log.info("eval-base[%s]: %s", locale, result)
+    return result
+
+
+@torch.no_grad()
 def evaluate_splade(
     model,
     tokenizer,
@@ -120,7 +150,9 @@ def evaluate_splade(
     ndcgs, recalls, nnz_q, nnz_d = [], [], [], []
     for query, _, labels, texts in eval_queries(locale, n_queries, seed):
         x_q = encode_texts(model, tokenizer, [query], S.MAX_QUERY_TOKENS, device)
-        x_d = encode_texts(model, tokenizer, texts, S.MAX_PRODUCT_TOKENS, device)
+        x_d = encode_texts_chunked(
+            model, tokenizer, texts, S.MAX_PRODUCT_TOKENS, device
+        )
         scores = (x_q @ x_d.T).squeeze(0)
         n, r = _metrics_from_scores(scores, labels)
         ndcgs.append(n)

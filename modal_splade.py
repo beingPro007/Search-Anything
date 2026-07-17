@@ -1,4 +1,4 @@
-"""GCN-head training on Modal: `modal run modal_train.py [--max-steps N] [--gpu A100-40GB]`."""
+"""SPLADE training on Modal: `modal run modal_splade.py [--max-steps N]` or deploy + spawn."""
 
 import os
 
@@ -7,7 +7,7 @@ import modal
 DATA_PATH = "/data"
 GPU = os.environ.get("TRAIN_GPU", "L4")
 
-app = modal.App("esci-gcn-train")
+app = modal.App("esci-splade-train")
 volume = modal.Volume.from_name("esci-data", create_if_missing=True)
 
 image = (
@@ -23,18 +23,15 @@ image = (
         "requests>=2.31",
         "tqdm>=4.66",
     )
-    .env({"ESCI_DATA_DIR": DATA_PATH, "HF_HOME": f"{DATA_PATH}/hf-cache"})
+    .env(
+        {
+            "ESCI_DATA_DIR": DATA_PATH,
+            "HF_HOME": f"{DATA_PATH}/hf-cache",
+            "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
+        }
+    )
     .add_local_python_source("app")
 )
-
-
-@app.function(image=image, volumes={DATA_PATH: volume}, memory=8192, cpu=4, timeout=3600)
-def build_graph(force: bool = False):
-    from app.databuilder import build
-
-    volume.reload()
-    build(groups={"graph"}, force=force)
-    volume.commit()
 
 
 @app.function(
@@ -48,16 +45,15 @@ def build_graph(force: bool = False):
 def train_remote(
     locales: str = "us,es,jp",
     epochs: int = 1,
-    batch_size: int = 16,
+    batch_size: int = 8,
     max_steps: int | None = None,
     limit: int | None = None,
-    num_neighbors: int = 3,
     max_negs: int = 2,
-    eval_queries: int = 300,
+    eval_queries: int = 200,
     require_negs: bool = False,
     max_per_query: int | None = None,
 ):
-    from app.train_gcn_head import train
+    from app.train_splade import train
 
     volume.reload()
     wanted = tuple(loc.strip() for loc in locales.split(",") if loc.strip())
@@ -67,7 +63,6 @@ def train_remote(
         batch_size=batch_size,
         max_steps=max_steps,
         limit=limit,
-        num_neighbors=num_neighbors,
         max_negs=max_negs,
         eval_queries=eval_queries,
         require_negs=require_negs,
@@ -78,58 +73,24 @@ def train_remote(
     return metrics
 
 
-@app.function(
-    image=image, volumes={DATA_PATH: volume}, gpu=GPU, memory=16384, cpu=4, timeout=3600
-)
-def eval_base(locales: str = "us,es,jp", eval_queries: int = 200):
-    import torch
-    from transformers import AutoModel, AutoTokenizer
-
-    from app.constants import train as T
-    from app.eval import evaluate_dense_base
-
-    volume.reload()
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    backbone = AutoModel.from_pretrained(T.BASE_MODEL).to(device).eval()
-
-    def encoder(input_ids, attention_mask):
-        out = backbone(input_ids=input_ids, attention_mask=attention_mask)
-        return out.last_hidden_state[:, 0]
-
-    tokenizer = AutoTokenizer.from_pretrained(T.BASE_MODEL)
-    wanted = tuple(loc.strip() for loc in locales.split(",") if loc.strip())
-    metrics = {
-        loc: evaluate_dense_base(encoder, tokenizer, loc, eval_queries, device)
-        for loc in wanted
-    }
-    print(metrics)
-    return metrics
-
-
 @app.local_entrypoint()
 def main(
     locales: str = "us,es,jp",
     epochs: int = 1,
-    batch_size: int = 16,
+    batch_size: int = 8,
     max_steps: int | None = None,
     limit: int | None = None,
-    num_neighbors: int = 3,
     max_negs: int = 2,
-    eval_queries: int = 300,
+    eval_queries: int = 200,
     require_negs: bool = False,
     max_per_query: int | None = None,
-    graph_only: bool = False,
 ):
-    build_graph.remote()
-    if graph_only:
-        return
     metrics = train_remote.remote(
         locales=locales,
         epochs=epochs,
         batch_size=batch_size,
         max_steps=max_steps,
         limit=limit,
-        num_neighbors=num_neighbors,
         max_negs=max_negs,
         eval_queries=eval_queries,
         require_negs=require_negs,

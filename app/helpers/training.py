@@ -114,6 +114,14 @@ def encode_texts(encoder, tokenizer, texts, max_tokens, device):
     return encoder(tok["input_ids"], tok["attention_mask"])
 
 
+def encode_texts_chunked(encoder, tokenizer, texts, max_tokens, device, chunk=8):
+    parts = [
+        encode_texts(encoder, tokenizer, texts[i : i + chunk], max_tokens, device)
+        for i in range(0, len(texts), chunk)
+    ]
+    return torch.cat(parts, dim=0)
+
+
 def info_nce(x_q, x_p, pos_idx, product_ids, temperature, normalize=True):
     if normalize:
         x_q = F.normalize(x_q, dim=-1)
