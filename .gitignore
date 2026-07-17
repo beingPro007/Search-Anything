@@ -6,3 +6,4 @@ data/
 *.part
 .ipynb_checkpoints/
 spec/
+.env
