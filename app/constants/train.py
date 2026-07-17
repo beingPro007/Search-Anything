@@ -1,0 +1,34 @@
+"""Hyperparameters for GCN-head + LoRA training."""
+
+from app.constants.esci import DATA_DIR
+
+BASE_MODEL = "BAAI/bge-m3"
+
+MAX_QUERY_TOKENS = 32
+MAX_PRODUCT_TOKENS = 192
+NUM_NEIGHBORS = 3
+MAX_HARD_NEGATIVES = 2
+
+TEMPERATURE = 0.05
+LORA_R = 16
+LORA_ALPHA = 32
+LORA_DROPOUT = 0.05
+LORA_TARGET_MODULES = ("query", "key", "value", "dense")
+
+LEARNING_RATE = 1e-4
+WEIGHT_DECAY = 0.01
+BATCH_SIZE = 16
+EPOCHS = 1
+WARMUP_STEPS = 500
+MAX_GRAD_NORM = 1.0
+LOCALE_SMOOTHING = 0.7
+LOG_EVERY = 50
+CHECKPOINT_EVERY = 2000
+
+EVAL_QUERIES_PER_LOCALE = 300
+NDCG_GAINS = {"E": 1.0, "S": 0.1, "C": 0.01, "I": 0.0}
+
+MODELS_DIR = DATA_DIR / "models"
+GCN_HEAD_FILE = "gcn_head.pt"
+LORA_DIR = "lora_adapter"
+CONFIG_FILE = "config.json"
