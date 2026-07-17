@@ -23,10 +23,10 @@ def ndcg(ranked_gains: list[float]) -> float:
     return dcg / idcg if idcg > 0 else 0.0
 
 
-def eval_queries(locale: str, n_queries: int, seed: int):
-    """Yield (query_text, product_ids, labels, product_texts) for judged test queries."""
+def eval_queries(locale: str, n_queries: int, seed: int, split: str = C.SPLIT_TEST):
+    """Yield (query_text, product_ids, labels, product_texts) for judged queries."""
     examples = load_parquet(examples_path(locale))
-    test = examples[examples[C.COL_SPLIT] == C.SPLIT_TEST]
+    test = examples[examples[C.COL_SPLIT] == split]
     prods = load_parquet(
         products_path(locale), columns=[C.COL_PRODUCT_ID, C.COL_PRODUCT_TEXT]
     )

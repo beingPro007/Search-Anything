@@ -24,6 +24,37 @@ class GCNHead(nn.Module):
         return torch.relu(self.w_p(torch.cat([h_p, h_agg], dim=-1)))
 
 
+class CLSWrap(nn.Module):
+    """CLS-pooling wrapper around any loaded backbone (e.g. a PeftModel)."""
+
+    def __init__(self, backbone):
+        super().__init__()
+        self.backbone = backbone
+
+    def forward(self, input_ids, attention_mask) -> torch.Tensor:
+        out = self.backbone(input_ids=input_ids, attention_mask=attention_mask)
+        return out.last_hidden_state[:, 0]
+
+
+def load_gcn(models_dir, device: str):
+    """Load the trained tower: base model + LoRA adapter + GCN head."""
+    import json
+
+    from peft import PeftModel
+    from transformers import AutoModel
+
+    cfg = json.loads((models_dir / "config.json").read_text())
+    backbone = AutoModel.from_pretrained(cfg["base_model"])
+    backbone = PeftModel.from_pretrained(backbone, models_dir / "lora_adapter")
+    encoder = CLSWrap(backbone).to(device).eval()
+    head = GCNHead(cfg["hidden_size"])
+    head.load_state_dict(
+        torch.load(models_dir / "gcn_head.pt", map_location=device)
+    )
+    head = head.to(device).eval()
+    return encoder, head, cfg
+
+
 class TextEncoder(nn.Module):
     """Transformer backbone with LoRA adapters, CLS pooling. Shared by both towers."""
 

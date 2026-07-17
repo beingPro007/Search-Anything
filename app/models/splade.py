@@ -23,3 +23,11 @@ class SpladeEncoder(nn.Module):
 
 def flops_loss(reps: torch.Tensor) -> torch.Tensor:
     return (reps.mean(dim=0) ** 2).sum()
+
+
+def load_splade(model_dir, device: str) -> tuple[SpladeEncoder, dict]:
+    import json
+
+    cfg = json.loads((model_dir / "splade_config.json").read_text())
+    model = SpladeEncoder(str(model_dir)).to(device).eval()
+    return model, cfg
